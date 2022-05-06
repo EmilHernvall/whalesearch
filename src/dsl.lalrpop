@@ -1,4 +1,4 @@
-use crate::{BoolExpr, StringExpr};
+use crate::{BoolExpr, StringExpr, StringTransform};
 
 grammar;
 
@@ -10,11 +10,14 @@ pub BoolExpr: BoolExpr = {
 
 BoolExpr2: BoolExpr = {
     <lh:StringExpr> "==" <rh:StringExpr> => BoolExpr::Eq(lh, rh),
+    <lh:StringExpr> "!=" <rh:StringExpr> => BoolExpr::Neq(lh, rh),
 };
 
 StringExpr: StringExpr = {
     <t:Field> => StringExpr::Field(t),
     <t:Literal> => StringExpr::Literal(t),
+    "lower" "(" <expr:StringExpr> ")" => StringExpr::Transform(StringTransform::LowerCase, Box::new(expr)),
+    "upper" "(" <expr:StringExpr> ")" => StringExpr::Transform(StringTransform::UpperCase, Box::new(expr)),
 };
 
 Field: String = {

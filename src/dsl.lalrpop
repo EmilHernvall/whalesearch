@@ -1,0 +1,26 @@
+use crate::{BoolExpr, StringExpr};
+
+grammar;
+
+pub BoolExpr: BoolExpr = {
+    <lh:BoolExpr> "&&" <rh:BoolExpr2> => BoolExpr::And(Box::new(lh), Box::new(rh)),
+    "!" <expr:BoolExpr2> => BoolExpr::Not(Box::new(expr)),
+    <BoolExpr2>,
+};
+
+BoolExpr2: BoolExpr = {
+    <lh:StringExpr> "==" <rh:StringExpr> => BoolExpr::Eq(lh, rh),
+};
+
+StringExpr: StringExpr = {
+    <t:Field> => StringExpr::Field(t),
+    <t:Literal> => StringExpr::Literal(t),
+};
+
+Field: String = {
+    <r#"([A-Za-z][A-Za-z0-9_]*)"#> => <>.to_string(),
+};
+
+Literal: String = {
+    <r#""(\\"|[^"])*""#> => <>[1..<>.len()-1].replace(r#"\""#, "\""),
+};

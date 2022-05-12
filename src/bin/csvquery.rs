@@ -15,41 +15,74 @@ pub enum StringTransform {
 }
 
 impl StringTransform {
-    pub fn evaluate(&self, input: String) -> String {
+    pub fn evaluate(&self, input: Value) -> Value {
         match self {
-            StringTransform::UpperCase => input.to_uppercase(),
-            StringTransform::LowerCase => input.to_lowercase(),
+            StringTransform::UpperCase => input.map_string(|x| x.to_uppercase()),
+            StringTransform::LowerCase => input.map_string(|x| x.to_lowercase()),
         }
     }
 }
 
-pub enum StringExpr {
-    Field(String),
+#[derive(Debug,Clone)]
+pub enum Value {
     Literal(String),
-    Transform(StringTransform, Box<StringExpr>),
+    Number(f64),
 }
 
-impl StringExpr {
-    pub fn evaluate(&self, row: &HashMap<String, String>) -> Option<String> {
+impl PartialEq for Value {
+    fn eq(&self, rhs: &Value) -> bool {
+        match (self, rhs) {
+            (Value::Literal(a), Value::Literal(b)) if a == b => true,
+            (Value::Number(a), Value::Number(b)) if a == b => true,
+            (Value::Literal(a), Value::Number(b)) |
+            (Value::Number(b), Value::Literal(a)) => {
+                let a: f64 = match a.parse() {
+                    Ok(x) => x,
+                    Err(_e) => return false,
+                };
+                a == *b
+            },
+            _ => false,
+        }
+    }
+}
+
+impl Value {
+    fn map_string(self, f: impl Fn(String) -> String) -> Value {
         match self {
-            StringExpr::Field(field) => row.get(field).map(String::to_string),
-            StringExpr::Literal(ref literal) => Some(literal.to_string()),
-            StringExpr::Transform(transform, ref expr) => Some(
-                transform.evaluate(expr.evaluate(row)?.to_string()),
+            Value::Literal(s) => Value::Literal(f(s)),
+            _ => self,
+        }
+    }
+}
+
+pub enum ValueExpr {
+    Field(String),
+    Value(Value),
+    Transform(StringTransform, Box<ValueExpr>),
+}
+
+impl ValueExpr {
+    pub fn evaluate(&self, row: &HashMap<String, Value>) -> Option<Value> {
+        match self {
+            ValueExpr::Field(field) => row.get(field).map(|x| x.clone()),
+            ValueExpr::Value(value) => Some(value.clone()),
+            ValueExpr::Transform(transform, ref expr) => Some(
+                transform.evaluate(expr.evaluate(row)?),
             ),
         }
     }
 }
 
 pub enum BoolExpr {
-    Eq(StringExpr, StringExpr),
-    Neq(StringExpr, StringExpr),
+    Eq(ValueExpr, ValueExpr),
+    Neq(ValueExpr, ValueExpr),
     Not(Box<BoolExpr>),
     And(Box<BoolExpr>, Box<BoolExpr>),
 }
 
 impl BoolExpr {
-    pub fn evaluate(&self, row: &HashMap<String, String>) -> bool {
+    pub fn evaluate(&self, row: &HashMap<String, Value>) -> bool {
         match self {
             BoolExpr::Eq(lh, rh) => rh.evaluate(row) == lh.evaluate(row),
             BoolExpr::Neq(lh, rh) => rh.evaluate(row) != lh.evaluate(row),
@@ -81,7 +114,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         let row = header.iter()
             .zip(fields.iter())
-            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .map(|(k, v)| (k.to_string(), Value::Literal(v.to_string())))
             .collect::<HashMap<_, _>>();
 
         if query.evaluate(&row) {
